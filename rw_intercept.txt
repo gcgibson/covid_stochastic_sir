@@ -1,39 +1,36 @@
 
-                    model {
-                        S[1] <- pop - infected
-                        I[1] <- infected
-                        R[1] <- 0
-                        beta ~ dgamma(1,1)
-                        gamma ~ dgamma(1,1)
-                                      
-                                  
-                                   
-                     for(i in 2:N) {
-                              Sk1[i] <- -beta*S[i-1]*I[i-1]
-                              Ik1[i] <- beta * S[i-1] * I[i-1] - gamma * I[i-1]
+        model {
 
-                              Sk2[i] <- -beta*(S[i-1] +  .5* Sk1[i])*(I[i-1] + .5*Ik1[i])
-                              Ik2[i] <- beta * (S[i-1] +  .5* Sk1[i]) * (I[i-1] + .5*Ik1[i]) - gamma * (I[i-1] + .5*Ik1[i])
-
-                              
-
-                              Sk3[i] <-  -beta*(S[i-1] + .5* Sk2[i])*(I[i-1] + .5*Ik2[i])
-                              Ik3[i] <- beta*(S[i-1] +.5*Sk2[i])*(I[i-1] + .5*Ik2[i]) - gamma*(I[i-1] + .5*Ik2[i])
                   
-                              Sk4[i] <- -beta*(S[i-1] + Sk3[i])*(I[i-1] + Ik3[i])
-                              Ik4[i] <- beta*(S[i-1] + Sk3[i])*(I[i-1] + Ik3[i])-gamma*(I[i-1] + Ik3[i])
+                  gamma_tot ~ dgamma(1,7)
+                  beta_tot ~ dbeta(1000*.2,1000 *(1-.2))
+                  for (j in 1:3){
+                    gamma[j] ~ dbeta(10000*gamma_tot,10000*(1-gamma_tot))
+                    beta[j] ~ dbeta(10000*beta_tot,10000*(1-beta_tot))
+                    
 
-                              S[i] <- S[i-1] +  .16666* (Sk1[i] + 2 * Sk2[i] + 2*Sk3[i] +Sk4[i] )
-                              I[i]  <- I[i-1] +  .166666* (Ik1[i] + 2 * Ik2[i] + 2*Ik3[i] +Ik4[i] )
+                    S[1,j] <- pop[j] - round(infected[j])
+                    I[1,j]  <- infected[j]
+                    
+                    
+                    for(i in 2:N) {
+                      num_contact[i,j] ~ dbinom(min(I[i-1,j]/(max(S[i-1,j],1)),.9999), max(S[i-1,j],1))
+                      num_transmit[i,j] ~ dbinom(beta[j],num_contact[i,j])
+                      num_recovered[i,j] ~ dbinom(gamma[j],I[i-1,j])
+                      I[i,j] <- I[i-1,j] + num_transmit[i,j] - num_recovered[i,j]
+                      S[i,j] <- S[i-1,j] - num_transmit[i,j]
   
-                              R[i] <- 1-S[i]-I[i]
-                      }
-                      
-                      for(i in 1:N){
-                            I_rand[i] ~ dnorm(I[i],1000)
-                            Y[i] ~dnorm(I_rand[i],1000000)
-                      }
-  
+                    }
 
-}
-                                 
+                    I_obs[1,j] <- I[1,j]* num_presented_to_network[1,j]/pop[j]
+                    Y[1,j] ~dnorm(I_obs[1,j],100000)
+
+                    for(i in 2:N){
+                      num_presented_to_network[i,j] ~ dnorm(num_presented_to_network[i-1,j],1000000000)
+                      I_obs[i,j] <-  I[i,j]*num_presented_to_network[i,j]/pop[j]
+                      Y[i,j] ~dnorm(I_obs[i,j],100000)
+                    }
+                    
+                  }
+      }
+                  
