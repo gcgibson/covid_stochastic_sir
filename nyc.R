@@ -1,9 +1,9 @@
-nyc_data <- read.delim("/Users/gcgibson/Downloads/A_EXPORT_QL_crosstab.csv", fileEncoding="UCS-2LE")
+nyc_data <- read.delim("/Users/gcgibson/covid/A_EXPORT_QL_crosstab.csv", fileEncoding="UCS-2LE")
 nyc_data_city_wide <- nyc_data[nyc_data$Dim1Name == "Citywide",]
 nyc_data_city_wide_all_age <- nyc_data_city_wide[nyc_data_city_wide$Dim2Value=="All age groups",]
 nyc_data_city_wide_all_age$X <- as.numeric(gsub(",", "", nyc_data_city_wide_all_age$X))
 
-nyc_data_ili <- read.delim("/Users/gcgibson/Downloads/A_EXPORT_QL_crosstab_ili.csv", fileEncoding="UCS-2LE")
+nyc_data_ili <- read.delim("/Users/gcgibson/covid/A_EXPORT_QL_crosstab_ili.csv", fileEncoding="UCS-2LE")
 nyc_data_ili_city_wide <- nyc_data_ili[nyc_data_ili$Dim1Name == "Citywide",]
 nyc_data_ili_city_wide_all_age <- nyc_data_ili_city_wide[nyc_data_ili_city_wide$Dim2Value=="All age groups",]
 nyc_data_ili_city_wide_all_age$X <- as.numeric(gsub(",", "", nyc_data_ili_city_wide_all_age$X))
@@ -17,6 +17,7 @@ covid_ts_us <- head(covid_ts_us,length(covid_ts_us)-2)
 hist_t <- 100
 ili_vs_covid_cases <- data.frame(t=tail(nyc_data_ili_city_wide_all_age$date,hist_t),ili_cases=tail(nyc_data_city_wide_all_age$X,hist_t),
                                  covid=c(rep(NA,hist_t-length(covid_ts_us)),tail(covid_ts_us,hist_t)),ili_percent=tail(nyc_data_ili_city_wide_all_age$X,hist_t))
+write.csv(ili_vs_covid_cases$ili_percent,"/Users/gcgibson/covid/ili.csv")
 library(ggplot2)
 library(scales)
 
@@ -173,26 +174,6 @@ stan_d = list(n_obs = sample_days,
 
 # Which parameters to monitor in the model:
 params_monitor = c("y_hat", "y0", "params", "fake_I")
-
-# Test / debug the model:
-test = stan("SI_fit.stan",
-            data = stan_d,
-            pars = params_monitor,
-            chains = 1, iter = 10)
-
-# Fit and sample from the posterior
-mod = stan(fit = test,
-           data = stan_d,
-           pars = params_monitor,
-           chains = 3,
-           warmup = 500,
-           iter = 1500)
-
-
-posts <- extract(mod)
-plot(colMeans(posts$fake_I[,,1]))
-
-
 
 
 
