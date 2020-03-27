@@ -1,47 +1,21 @@
-sir <- function(time, state, parameters) {
-  
-  with(as.list(c(state, parameters)), {
-    
-    dS <- -beta * S * I
-    dI <-  beta * S * I - gamma * I
-    dR <-                 gamma * I
-    
-    return(list(c(dS, dI, dR)))
-  })
-}
-
-### Set parameters
-## Proportion in each compartment: Susceptible 0.999999, Infected 0.000001, Recovered 0
-init       <- c(S = 1-1e-6, I = 1e-6, R = 0.0)
-## beta: infection parameter; gamma: recovery parameter
-parameters <- c(beta = 1.4247, gamma = 0.14286)
-## Time frame
-times      <- seq(0, 70, by = 1)
-
-## Solve using ode (General Solver for Ordinary Differential Equations)
-out <- ode(y = init, times = times, func = sir, parms = parameters)
-## change to data frame
-out <- as.data.frame(out)
-## Delete time variable
-out$time <- NULL
-## Show data
-head(out, 10)
-
-plot(cumsum(diff(out$I)))
 
 
 library(rjags)
 model <- "
 model {
     
-    # overall specific random walk 
-    X[1] ~ dnorm(0,1)
+    # overall  random walk 
+    X_season[1] ~ dnorm(0,1)
     for (i in 2:33){
-      X[i] ~ dnorm(X[i-1],1000)
+      X_season[i] ~ dnorm(X_season[i-1],10000)
+    }
+
+    # region specific random walk 
+    X_region[1] ~ dnorm(0,1)
+    for (i in 2:54){
+          X_region[i] ~ dnorm(X_region[i-1],10000)
     }
   
-    #gamma ~ dgamma(1,14)
-    #beta ~ dbeta(1000*.2,1000 *(1-.2))
     
 
     I[1] ~ dbeta(100*.02,100*(1-.98))
@@ -91,13 +65,13 @@ model {
 
 
     
-    Z[1] ~ dnorm(0,1)
+    X_interaction[1] ~ dnorm(0,1)
 
     for (i in 2:N){
-        Z[i] ~ dnorm(Z[i-1],1000)
-        I_dis[i] <- ifelse(disease[i] == 1,I[s_idx[i]],I_corona[s_idx[i]])
-        y_mean[i] <- Z[i] + X[s_idx[i]] +I_dis[i]
-        y[i] ~ dnorm(y_mean[i],1000)
+        X_interaction[i] ~ dnorm(X_interaction[i-1],10000000)
+        I_dis[i] <- ifelse(d_idx[i] == 1,I[s_idx[i]],I_corona[s_idx[i]])
+        y_mean[i] <- X_interaction[i] + X_season[s_idx[i]] +I_dis[i] + X_region[r_idx[i]]
+        y[i] ~ dnorm(y_mean[i],10000000)
     }
 
 
@@ -105,29 +79,46 @@ model {
 "
 
 library(cdcForecastUtils)
-
-#state_data <- download_and_preprocess_state_flu_data(latest_year = 2020)
-location <- "New York"
+#epi parameters
 flu_beta <- 2
 flu_gamma <-  1.4
-state_data_ny <- state_data[state_data$region == location ,]
-state_data_ny <- state_data_ny[state_data_ny$season != "2019/2020",]
-state_data_ny <- state_data_ny[state_data_ny$week %in% c(40:52,1:20),]
-state_data_ny <- state_data_ny[ state_data_ny$season >= "2012/2013",]
-
-ggplot(state_data_ny,aes(x=rep(1:33,length.out=length(unweighted_ili)),y=unweighted_ili,col=season)) + geom_line() + facet_grid(~season)
-  
-current_season <- state_data[state_data$region == location & state_data$year == "2020" & state_data$week >= 10,]$unweighted_ili-3
 
 
-x <- c(rep(1:33,length.out=length(state_data_ny$unweighted_ili)),1:6)
-y <- c(state_data_ny$unweighted_ili,current_season,rep(NA,4))
-dat <- list(beta=flu_beta,gamma=flu_gamma,N=length(x),beta_corona=.2,gamma_corona=1/14,
-            y=y,s_idx=x,disease=c(rep(1,length(state_data_ny$unweighted_ili)),rep(2,length(current_season)+4)))
+
+
+# get unique regions
+unique_regions <- unique(state_data$region)
+unique_regions <- unique_regions[unique_regions != "Florida"]
+
+
+#state_data <- download_and_preprocess_state_flu_data(latest_year = 2020)
+
+data_frame_for_fit <- data.frame()
+
+for (location_itr in 1:length(unique_regions)){
+    location <- unique_regions[location_itr]
+    state_data_ny <- state_data[state_data$region == location ,]
+    state_data_ny <- state_data_ny[state_data_ny$season != "2019/2020",]
+    state_data_ny <- state_data_ny[state_data_ny$week %in% c(40:52,1:20),]
+    state_data_ny <- state_data_ny[ state_data_ny$season >= "2012/2013",]
+    
+    current_season <- state_data[state_data$region == location & state_data$year == "2020" & state_data$week >= 10,]$unweighted_ili
+    s_idx <- c(rep(1:33,length.out=length(state_data_ny$unweighted_ili)),1:6)
+    y <- c(state_data_ny$unweighted_ili,current_season,rep(NA,4))
+    d_idx <- c(rep(1,length(state_data_ny$unweighted_ili)),rep(2,6))
+    data_frame_for_fit <- rbind(data_frame_for_fit,data.frame(s_idx=s_idx,y=y,r_idx=location_itr,d_idx=d_idx))
+}
+
+
+dat <- list(beta=flu_beta,gamma=flu_gamma,N=nrow(data_frame_for_fit),beta_corona=.2,gamma_corona=1/14,
+            y=data_frame_for_fit$y,s_idx=data_frame_for_fit$s_idx,r_idx=data_frame_for_fit$r_idx,d_idx=data_frame_for_fit$d_idx)
+            
+
+## add to dataframe
 jgs <- jags.model(file = textConnection(model), data = dat, n.adapt = 1000)
 update(jgs, 1000)
 out_jags <- jags.samples(jgs, c('y','y_mean'), 3000, 3)
+data_frame_for_fit$y_mean <- out_jags$y_mean
 
-adjustment <- c(rep(0,nrow(state_data_ny)),rep(2,length(current_season)+4))
-plot(rowMeans(out_jags$y_mean) +adjustment ,type='l')
-lines(y+adjustment,col='red')
+
+
