@@ -73,10 +73,10 @@ model {
     X_interaction[1] ~ dnorm(0,1)
 
     for (i in 2:N){
-        X_interaction[i] ~ dnorm(X_interaction[i-1],10000)
+        X_interaction[i] ~ dnorm(X_interaction[i-1],8000)
         I_dis[i] <- ifelse(d_idx[i] == 1,I[s_idx[i],r_idx[i]],I_corona[s_idx[i],r_idx[i]])
         y_mean[i] <- I_dis[i]  + X_interaction[i] # + X_season[s_idx[i]] + X_region[r_idx[i]]
-        y[i] ~ dnorm(y_mean[i],10000000)
+        y[i] ~ dnorm(y_mean[i],100000)
     }
 
 
@@ -95,7 +95,7 @@ state_data <- download_and_preprocess_state_flu_data(latest_year = 2020)
 unique_regions <- unique(state_data$region)
 unique_regions <- unique_regions[unique_regions != "Florida"]
 unique_regions <- unique_regions[unique_regions != "Commonwealth of the Northern Mariana Islands"]
-unique_regions <- c(sample(unique_regions,10),"New York")
+#unique_regions <- c(sample(unique_regions,10),"New York","New York City")
 
 data_frame_for_fit <- data.frame()
 
@@ -182,6 +182,10 @@ distributional_submission_df <- multi_trajectories_to_binned_distributions(
   season_end_ew = season_end_ew,
   cdc_report_ew = cdc_report_ew)
 
+generate_csv_from_submission_df(distributional_submission_df,"covid-19-ili-forecasting-models/submissions/state-UMassCoE-SIR/2020-ew12-SIR.csv")
+
+
+### plotting
 plot_locations <- c("New York","New Jersey","California","Massachusetts","New Mexico", "New York City")
 
 distributional_submission_df_to_plot <- distributional_submission_df[distributional_submission_df$location %in% plot_locations,]
