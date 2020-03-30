@@ -75,8 +75,8 @@ model {
     for (i in 2:N){
         X_interaction[i] ~ dnorm(X_interaction[i-1],8000)
         I_dis[i] <- ifelse(d_idx[i] == 1,I[s_idx[i],r_idx[i]],I_corona[s_idx[i],r_idx[i]])
-        y_mean[i] <- I_dis[i]  + X_interaction[i] # + X_season[s_idx[i]] + X_region[r_idx[i]]
-        y[i] ~ dnorm(y_mean[i],100000)
+        y_mean[i] <- I_dis[i]  + X_interaction[i]  + X_season[s_idx[i]] + X_region[r_idx[i]]
+        y[i] ~ dnorm(y_mean[i],10000)
     }
 
 
@@ -89,7 +89,7 @@ flu_beta <- 2
 flu_gamma <-  1.4
 
 
-state_data <- download_and_preprocess_state_flu_data(latest_year = 2020)
+#state_data <- download_and_preprocess_state_flu_data(latest_year = 2020)
 
 # get unique regions
 unique_regions <- unique(state_data$region)
@@ -123,7 +123,7 @@ dat <- list(beta=flu_beta,gamma=flu_gamma,N=nrow(data_frame_for_fit),beta_corona
 jgs <- jags.model(file = textConnection(model), data = dat, n.adapt = 1000)
 update(jgs, 1000)
 out_jags <- jags.samples(jgs, c('y','y_mean'), 3000, 3)
-y_samp <- matrix(out_jags$y_mean,ncol=1000)
+y_samp <- matrix(out_jags$y,ncol=1000)
 
 
 ## set up submission
