@@ -70,6 +70,15 @@ model {
 
     }
     
+    #Covid percent case likelihood
+  
+    for (covid_idx in 1:covid_length){
+      state_percent[covid_idx] ~ dnorm(I_corona[state_week[covid_idx],state_idx[covid_idx]],.0001)
+    }
+
+
+
+    #ILI likelihood
     X_interaction[1] ~ dnorm(0,1)
 
     for (i in 2:N){
@@ -114,9 +123,37 @@ for (location_itr in 1:length(unique_regions)){
     data_frame_for_fit <- rbind(data_frame_for_fit,data.frame(s_idx=s_idx,y=y,r_idx=location_itr,d_idx=d_idx,int_idx=int_idx))
 }
 
+state_testing_data$date_formatted <- as.Date(state_testing_data$dateChecked)
+
+state_testing_data$date_formatted <- unlist(lapply(state_testing_data$date,function(x){
+  year <- substr(x,1,4)
+  month <- substr(x,5,6)
+  day <- substr(x,7,8)
+  return (paste0(year,"/",month,"/",day))
+}))
+state_testing_data$date_formatted <- as.Date(state_testing_data$date_formatted)
+state_testing_data$week <- lubridate::week(state_testing_data$date_formatted)
+
+state_testing_data_by_week <- state_testing_data %>% group_by(week,state) %>% summarise(week_positive = sum(positive,na.rm=T))
+
+popoulation<- state.x77[,1]
+population_df <- data.frame(names = names(popoulation),pop=popoulation*100)
+unique_regions_df <- data.frame(reg =unique_regions, reg_idx = 1:length(unique_regions))
+  
+
+
+state_testing_data_by_week$state_name <- abbr2state(state_testing_data_by_week$state)
+
+state_testing_data_by_week$pop <-population_df[state_testing_data_by_week$state_name,]$pop
+state_testing_data_by_week$percent <- state_testing_data_by_week$week_positive/state_testing_data_by_week$pop
+
+state_testing_data_by_week$state_idx <- unique_regions_df[as.factor(state_testing_data_by_week$state_name)  ,]$reg_idx
+state_testing_data_by_week <- state_testing_data_by_week[complete.cases(state_testing_data_by_week),]
 
 dat <- list(beta=flu_beta,gamma=flu_gamma,N=nrow(data_frame_for_fit),beta_corona=3*.2,gamma_corona=3*1/14,
-            y=data_frame_for_fit$y,s_idx=data_frame_for_fit$s_idx,r_idx=data_frame_for_fit$r_idx,d_idx=data_frame_for_fit$d_idx,int_idx=data_frame_for_fit$int_idx)
+            y=data_frame_for_fit$y + 1e-10,s_idx=data_frame_for_fit$s_idx,r_idx=data_frame_for_fit$r_idx,d_idx=data_frame_for_fit$d_idx,int_idx=data_frame_for_fit$int_idx,
+            state_percent=state_testing_data_by_week$percent,state_idx=state_testing_data_by_week$state_idx,
+            state_week=state_testing_data_by_week$week-9,covid_length = length(state_testing_data_by_week$week))
             
 
 ## add to dataframe
@@ -182,7 +219,7 @@ distributional_submission_df <- multi_trajectories_to_binned_distributions(
   season_end_ew = season_end_ew,
   cdc_report_ew = cdc_report_ew)
 
-generate_csv_from_submission_df(distributional_submission_df,"covid-19-ili-forecasting-models/submissions/state-UMassCoE-SIR/2020-ew12-SIR.csv")
+generate_csv_from_submission_df(distributional_submission_df,"1020-ew12-SIR.csv")
 
 
 ### plotting
@@ -202,3 +239,9 @@ plot_to_save <- plot_trajectories_and_intervals(
 pdf("states.pdf")
 print (plot_to_save)
 dev.off()
+
+
+
+census_2010 <- read.csv("census_2010.csv")
+
+merge(trajectories_by_location,census_2010)
