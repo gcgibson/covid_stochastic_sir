@@ -45,21 +45,22 @@ model {
           I[i,r]  <- mean_I[i,r]
       }
       
-  
+      beta_corona_t[1,r] <- beta_corona
       I_corona[1,r] ~ dbeta(100*.02,100*(1-.98))
       S_corona[1,r] ~ dbeta(100*.98,100*(.02))
       for(i in 2:33) {
-        Ik1_corona[i,r] <- beta_corona * S_corona[i-1,r] * I_corona[i-1,r]- gamma_corona * I_corona[i-1,r]
-        Sk1_corona[i,r] <- -beta_corona*S_corona[i-1,r]*I_corona[i-1,r]
+        beta_corona_t[i,r] ~ dnorm(.75*beta_corona_t[i-1,r] ,1000)
+        Ik1_corona[i,r] <- beta_corona_t[i,r]  * S_corona[i-1,r] * I_corona[i-1,r]- gamma_corona * I_corona[i-1,r]
+        Sk1_corona[i,r] <- -beta_corona_t[i,r] *S_corona[i-1,r]*I_corona[i-1,r]
         
-        Ik2_corona[i,r] <- beta_corona * (S_corona[i-1,r] +  .5*Sk1_corona[i,r]) * (I_corona[i-1,r] + .5*Ik1_corona[i,r]) - gamma_corona * (I_corona[i-1,r] + .5*Ik1_corona[i,r])
-        Sk2_corona[i,r] <- -beta_corona*(S_corona[i-1,r] +  .5*Sk1_corona[i,r])*(I_corona[i-1,r] + .5*Ik1_corona[i,r])
+        Ik2_corona[i,r] <- beta_corona_t[i,r]  * (S_corona[i-1,r] +  .5*Sk1_corona[i,r]) * (I_corona[i-1,r] + .5*Ik1_corona[i,r]) - gamma_corona * (I_corona[i-1,r] + .5*Ik1_corona[i,r])
+        Sk2_corona[i,r] <- -beta_corona_t[i,r] *(S_corona[i-1,r] +  .5*Sk1_corona[i,r])*(I_corona[i-1,r] + .5*Ik1_corona[i,r])
         
-        Ik3_corona[i,r] <- beta_corona*(S_corona[i-1,r] +.5*Sk2_corona[i,r])*(I_corona[i-1,r] + .5*Ik2_corona[i,r]) - gamma_corona*(I_corona[i-1,r] + .5*Ik2_corona[i,r])
-        Sk3_corona[i,r] <-  -beta_corona*(S_corona[i-1,r] + .5*Sk2_corona[i,r])*(I_corona[i-1,r] + .5*Ik2_corona[i,r])
+        Ik3_corona[i,r] <- beta_corona_t[i,r] *(S_corona[i-1,r] +.5*Sk2_corona[i,r])*(I_corona[i-1,r] + .5*Ik2_corona[i,r]) - gamma_corona*(I_corona[i-1,r] + .5*Ik2_corona[i,r])
+        Sk3_corona[i,r] <-  -beta_corona_t[i,r] *(S_corona[i-1,r] + .5*Sk2_corona[i,r])*(I_corona[i-1,r] + .5*Ik2_corona[i,r])
         
-        Ik4_corona[i,r] <- beta_corona*(S_corona[i-1,r] + Sk3_corona[i,r])*(I_corona[i-1,r] + Ik3_corona[i,r])-gamma_corona*(I_corona[i-1,r] + Ik3_corona[i,r])
-        Sk4_corona[i,r] <- -beta_corona*(S_corona[i-1,r] + Sk3_corona[i,r])*(I_corona[i-1,r] + Ik3_corona[i,r])
+        Ik4_corona[i,r] <- beta_corona_t[i,r] *(S_corona[i-1,r] + Sk3_corona[i,r])*(I_corona[i-1,r] + Ik3_corona[i,r])-gamma_corona*(I_corona[i-1,r] + Ik3_corona[i,r])
+        Sk4_corona[i,r] <- -beta_corona_t[i,r] *(S_corona[i-1,r] + Sk3_corona[i,r])*(I_corona[i-1,r] + Ik3_corona[i,r])
         
         
         mean_I_corona[i,r] <- I_corona[i-1,r] +  .166666* (Ik1_corona[i,r] + 2 * Ik2_corona[i,r] + 2*Ik3_corona[i,r] +Ik4_corona[i,r] )
@@ -73,7 +74,7 @@ model {
     #Covid percent case likelihood
   
     for (covid_idx in 1:covid_length){
-      state_percent[covid_idx] ~ dnorm(I_corona[state_week[covid_idx],state_idx[covid_idx]],.0001)
+      state_percent[covid_idx] ~ dnorm(I_corona[state_week[covid_idx],state_idx[covid_idx]],100)
     }
 
 
@@ -93,10 +94,11 @@ model {
 "
 
 library(cdcForecastUtils)
+library(openintro)
 #epi parameters
 flu_beta <- 2
 flu_gamma <-  1.4
-
+state_testing_data <- read.csv("/Users/gcgibson/Downloads/states-daily.csv")
 
 #state_data <- download_and_preprocess_state_flu_data(latest_year = 2020)
 
@@ -219,7 +221,10 @@ distributional_submission_df <- multi_trajectories_to_binned_distributions(
   season_end_ew = season_end_ew,
   cdc_report_ew = cdc_report_ew)
 
-generate_csv_from_submission_df(distributional_submission_df,"1020-ew12-SIR.csv")
+state_point <- generate_point_forecasts(distributional_submission_df)
+state_distributional_submission_df <- sanitize_entry(rbind(distributional_submission_df,state_point))
+verify_entry(state_distributional_submission_df,challenge = "state_ili")
+generate_csv_from_submission_df(state_distributional_submission_df,"covid-19-ili-forecasting-models/submissions/state-UMassCoE-SIR/2020-ew12-SIR")
 
 
 ### plotting
@@ -241,7 +246,108 @@ print (plot_to_save)
 dev.off()
 
 
-
+regions <- unique(distributional_submission_df$location)
 census_2010 <- read.csv("census_2010.csv")
+census_2010 <- census_2010 %>% mutate(weight = year_2010 / sum(year_2010))
+census_2010$location <- census_2010$state
+census_2010$location <- unlist(lapply( census_2010$state,function(x){
+  if (grepl("_",x)){
+    print (x)
+    return (paste0(strsplit(as.character(x),"_")[[1]],collapse=" "))
+  } else{
+    return (as.character(x))
+  }
+}))
+census_2010$location <- as.factor(census_2010$location)
 
-merge(trajectories_by_location,census_2010)
+distributional_submission_df$location <- as.factor(distributional_submission_df$location)
+
+levels(distributional_submission_df$location) <- levels(census_2010$location)
+
+regional_weight_df <- data.frame()
+
+for (r in c(as.vector(census_2010$hhs_region),"National")){
+  if (r != "National"){
+    local_census <- census_2010[census_2010$hhs_region == r, ]
+    local_census$weight <- local_census$weight#/sum(local_census$weight)
+     
+    local_census$region <- r
+    regional_weight_df <-rbind(regional_weight_df,data.frame(local_census))
+  } else{
+    census_2010$region <- r
+    
+    regional_weight_df <-rbind(regional_weight_df,data.frame(census_2010))
+    
+  }
+}
+
+merged_df <- merge(data.frame(distributional_submission_df),regional_weight_df,all=TRUE)
+
+
+regional_df <- merged_df %>% group_by(region,bin,target,type) %>% summarize(value=sum(value*weight/(sum(weight))))
+
+regional_df$location <- recode(regional_df$region,hhs1="HHS Region 1",hhs2="HHS Region 2",
+                                hhs3="HHS Region 3",hhs4="HHS Region 4",hhs5="HHS Region 5",
+                               hhs6 = "HHS Region 6",hhs7="HHS Region 7",hhs8="HHS Region 8",
+                               hhs9="HHS Region 9",hhs10="HHS Region 10",National="US National")
+
+
+
+
+
+
+
+regional_df$bin <- as.character(regional_df$bin)
+regional_df$type
+regional_df <- regional_df[complete.cases(regional_df),]
+
+
+regional_df_sanitized <- sanitize_entry(regional_df)
+point_forecasts <- generate_point_forecasts(regional_df_sanitized)
+regional_df_sanitized <-rbind(point_forecasts,regional_df_sanitized[,2:ncol(regional_df_sanitized)])
+sum(regional_df_sanitized$type == "point")
+
+verify_entry(regional_df_sanitized,challenge = "ilinet")
+generate_csv_from_submission_df(regional_df_sanitized,"covid-19-ili-forecasting-models/submissions/region-UMassCoE-SIR/2020-ew12-SIR")
+
+trajectories_by_location_nat <- tibble(
+  location = unique(regional_df_sanitized$location) 
+) %>%
+  mutate(
+    trajectories = purrr::map(
+      location,
+      function(l) {
+        matrix(0, nrow = 1, ncol = 26)
+      }
+    )
+  )
+
+regional_data <- download_and_preprocess_flu_data()
+regional_data$region <- recode(regional_data$region, "Region 1" = "HHS Region 1","Region 2" = "HHS Region 2",
+                               "Region 3" = "HHS Region 3","Region 4" = "HHS Region 4","Region 5" = "HHS Region 5",
+                               "Region 6" = "HHS Region 6","Region 7" = "HHS Region 7","Region 8" = "HHS Region 8",
+                               "Region 9" = "HHS Region 9","Region 10" = "HHS Region 10","National"="US National")
+
+regional_df_sanitized_tmp <- regional_df_sanitized[regional_df_sanitized$location %in% c("HHS Region 1","US National"),]
+
+trajectories_by_location_nat <- tibble(
+  location = unique(regional_df_sanitized_tmp$location) 
+) %>%
+  mutate(
+    trajectories = purrr::map(
+      location,
+      function(l) {
+        matrix(0, nrow = 1, ncol = 26)
+      }
+    )
+  )
+
+plot_trajectories_and_intervals(
+  flu_data = regional_data,
+  target_variable = "weighted_ili",
+  trajectories_by_location = trajectories_by_location_nat,
+  submission = regional_df_sanitized_tmp,
+  season_start_ew = season_start_ew,
+  season_end_ew = season_end_ew,
+  cdc_report_ew = cdc_report_ew
+)
